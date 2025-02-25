@@ -9,21 +9,53 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PositionStats } from './position-stats';
 
+interface Position {
+  Symbol: string;
+  Last: string | number;
+  'Pos Qty': string | number;
+  '%Change': string;
+  'Avg Price': string | number;
+  Days?: number;
+  positionType: 'Stock/ETF' | 'Option' | 'Bond/CD';
+  underlyingSymbol?: string;
+  optionType?: 'Call' | 'Put';
+  strikePrice?: string;
+  expiryDate?: string;
+  daysToExpiry?: number;
+  optionStrategy?: string;
+  posQty: number;
+  isShort: boolean;
+  positionValue: number;
+  avgPrice: number;
+}
+
+interface StockWithOptions {
+  stock: Position | null;
+  options: Position[];
+}
+
+interface StrategyCount {
+  [key: string]: number;
+}
+
 export function TradingPositionsDashboard() {
-  const [positions, setPositions] = useState([]);
-  const [stocksWithOptions, setStocksWithOptions] = useState({});
-  const [orphanedOptions, setOrphanedOptions] = useState([]);
-  const [bondsAndCDs, setBondsAndCDs] = useState([]);
-  const [expandedStocks, setExpandedStocks] = useState({});
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [stocksWithOptions, setStocksWithOptions] = useState<Record<string, StockWithOptions>>({});
+  const [orphanedOptions, setOrphanedOptions] = useState<Position[]>([]);
+  const [bondsAndCDs, setBondsAndCDs] = useState<Position[]>([]);
+  const [expandedStocks, setExpandedStocks] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState('stocks');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'Symbol', direction: 'ascending' });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ 
+    key: 'Symbol', 
+    direction: 'ascending' 
+  });
   const [groupByStrategy, setGroupByStrategy] = useState(false);
-  const [strategies, setStrategies] = useState([]);
+  const [strategies, setStrategies] = useState<string[]>([]);
 
   // Function to format currency values
-  const formatCurrency = (value) => {
+  const formatCurrency = (value: string | number | null | undefined): string => {
     if (!value) return '-';
     if (typeof value === 'string' && value.startsWith('$')) {
       value = value.replace('$', '');
@@ -33,16 +65,16 @@ export function TradingPositionsDashboard() {
       currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
-    }).format(parseFloat(value));
+    }).format(parseFloat(value.toString()));
   };
 
   // Function to format percentages
-  const formatPercentage = (value) => {
+  const formatPercentage = (value: string | number | null | undefined): string => {
     if (!value) return '-';
     if (typeof value === 'string' && value.includes('%')) {
       return value;
     }
-    return `${parseFloat(value).toFixed(2)}%`;
+    return `${parseFloat(value.toString()).toFixed(2)}%`;
   };
 
   // Calculate statistics for the dashboard
@@ -51,7 +83,7 @@ export function TradingPositionsDashboard() {
     const allOptions = [...Object.values(stocksWithOptions).flatMap(s => s.options), ...orphanedOptions];
     
     // Count strategies
-    const strategyCount = {};
+    const strategyCount: StrategyCount = {};
     allOptions.forEach(option => {
       if (option.optionStrategy) {
         strategyCount[option.optionStrategy] = (strategyCount[option.optionStrategy] || 0) + 1;
@@ -63,7 +95,7 @@ export function TradingPositionsDashboard() {
       if (!option.expiryDate) return acc;
       
       const expiry = new Date(option.expiryDate);
-      const daysToExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+      const daysToExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
       if (daysToExpiry <= 7) acc.next7Days++;
       else if (daysToExpiry <= 30) acc.next8to30Days++;
@@ -88,13 +120,18 @@ export function TradingPositionsDashboard() {
   };
 
   // Handle file upload
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file) {
       setLoading(true);
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target.result;
+        const text = e.target?.result;
+        if (typeof text !== 'string') {
+          setLoading(false);
+          return;
+        }
+        
         const lines = text.split('\n');
         let dataStartLine = 0;
         
@@ -117,18 +154,18 @@ export function TradingPositionsDashboard() {
           header: true,
           skipEmptyLines: true,
           complete: (results) => {
-            const processedPositions = results.data.map(position => {
+            const processedPositions = results.data.map((position: any) => {
               const posQtyStr = position['Pos Qty'] ? position['Pos Qty'].toString() : '';
               const posQty = posQtyStr.replace(/,/g, '').replace(/^\+/, '');
               const isShort = posQtyStr.startsWith('-');
               
-              let positionType = 'Stock/ETF';
-              let underlyingSymbol = null;
-              let optionType = null;
-              let strikePrice = null;
-              let expiryDate = null;
-              let daysToExpiry = null;
-              let optionStrategy = null;
+              let positionType: Position['positionType'] = 'Stock/ETF';
+              let underlyingSymbol: string | null = null;
+              let optionType: 'Call' | 'Put' | null = null;
+              let strikePrice: string | null = null;
+              let expiryDate: string | null = null;
+              let daysToExpiry: number | null = null;
+              let optionStrategy: string | null = null;
               
               const symbol = position.Symbol ? position.Symbol.toString() : '';
               
@@ -181,12 +218,12 @@ export function TradingPositionsDashboard() {
                 isShort,
                 positionValue,
                 avgPrice
-              };
+              } as Position;
             });
 
             setPositions(processedPositions);
             
-            const stocksWithOptionsMap = {};
+            const stocksWithOptionsMap: Record<string, StockWithOptions> = {};
             processedPositions
               .filter(p => p.positionType === 'Stock/ETF')
               .forEach(stock => {
@@ -199,7 +236,7 @@ export function TradingPositionsDashboard() {
             processedPositions
               .filter(p => p.positionType === 'Option' && p.underlyingSymbol)
               .forEach(option => {
-                const underlyingSymbol = option.underlyingSymbol;
+                const underlyingSymbol = option.underlyingSymbol as string;
                 if (!stocksWithOptionsMap[underlyingSymbol]) {
                   stocksWithOptionsMap[underlyingSymbol] = {
                     stock: null,
@@ -224,15 +261,17 @@ export function TradingPositionsDashboard() {
             
             setOrphanedOptions(orphaned);
             
-            const uniqueStrategies = [...new Set(
-              processedPositions
-                .filter(p => p.optionStrategy)
-                .map(p => p.optionStrategy)
-            )];
+const uniqueStrategies = Array.from(
+  new Set(
+    processedPositions
+      .map(p => p.optionStrategy)
+      .filter((s): s is string => s !== undefined) // Type guard for TypeScript
+  )
+);
+
+setStrategies(uniqueStrategies);
             
-            setStrategies(uniqueStrategies);
-            
-            const initialExpandedState = {};
+            const initialExpandedState: Record<string, boolean> = {};
             Object.keys(stocksWithOptionsMap).forEach(symbol => {
               initialExpandedState[symbol] = false;
             });
@@ -247,7 +286,7 @@ export function TradingPositionsDashboard() {
   };
 
   // Toggle expanded state for a stock
-  const toggleExpand = (symbol) => {
+  const toggleExpand = (symbol: string) => {
     setExpandedStocks(prev => ({
       ...prev,
       [symbol]: !prev[symbol]
@@ -255,8 +294,8 @@ export function TradingPositionsDashboard() {
   };
 
   // Handle sorting
-  const requestSort = (key) => {
-    let direction = 'ascending';
+  const requestSort = (key: string) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
     if (sortConfig.key === key && sortConfig.direction === 'ascending') {
       direction = 'descending';
     }
@@ -274,7 +313,7 @@ export function TradingPositionsDashboard() {
       const [symbol, data] = item;
       if (sortConfig.key === 'Symbol') return symbol;
       if (!data.stock) return '';
-      return data.stock[sortConfig.key];
+      return data.stock[sortConfig.key as keyof Position];
     }],
     [sortConfig.direction === 'ascending' ? 'asc' : 'desc']
   );
@@ -290,7 +329,7 @@ export function TradingPositionsDashboard() {
 
   // Get options by strategy
   const getOptionsByStrategy = () => {
-    const optionsByStrategy = {};
+    const optionsByStrategy: Record<string, Array<Position & { stockSymbol: string }>> = {};
     strategies.forEach(strategy => {
       optionsByStrategy[strategy] = [];
     });
@@ -303,7 +342,7 @@ export function TradingPositionsDashboard() {
           }
           optionsByStrategy[option.optionStrategy].push({
             ...option,
-            stockSymbol: stock ? stock.Symbol : option.underlyingSymbol
+            stockSymbol: stock ? stock.Symbol : option.underlyingSymbol!
           });
         }
       });
@@ -316,7 +355,7 @@ export function TradingPositionsDashboard() {
         }
         optionsByStrategy[option.optionStrategy].push({
           ...option,
-          stockSymbol: option.underlyingSymbol
+          stockSymbol: option.underlyingSymbol!
         });
       }
     });
@@ -359,7 +398,7 @@ export function TradingPositionsDashboard() {
           <Checkbox
             id="strategy"
             checked={groupByStrategy}
-            onCheckedChange={() => setGroupByStrategy(!groupByStrategy)}
+            onCheckedChange={(checked) => setGroupByStrategy(checked as boolean)}
           />
           <label
             htmlFor="strategy"
